@@ -57,6 +57,82 @@ def  test_batch_tool():
         assert msg == "Squaring 2\nSquaring 3"
 
 
+
+
+def test_batch_tool_with_malformed_payload():
+
+    from pytoolsmith.batch_tool import batch_tool
+    from pytoolsmith import ToolLibrary
+    
+    call_tracker = {"important_docs_calls": [], "filter_calls": []}
+    
+    def search_knowledge_base_important_docs(kb_id: str, user_query: str, _user_msg: str, products: list[str]) -> str:
+        call_tracker["important_docs_calls"].append({
+            "kb_id": kb_id,
+            "user_query": user_query,
+            "_user_msg": _user_msg,
+            "products": products
+        })
+        return "Found docs result"
+
+    def search_knowledge_base_with_product_filter(kb_id: str, user_query: str, _user_msg: str, products: list[str]) -> str:
+        call_tracker["filter_calls"].append({
+            "kb_id": kb_id,
+            "user_query": user_query,
+            "_user_msg": _user_msg,
+            "products": products
+        })
+        return "Filtered search result"
+
+    library = ToolLibrary(include_batch_tool=False)
+    library.add_tool(ToolDefinition(function=search_knowledge_base_important_docs))
+    library.add_tool(ToolDefinition(function=search_knowledge_base_with_product_filter))
+
+    # Extra "}" at the end and malformed arguments nested dicts
+    malformed_payload = '''[
+  {
+    "name": "search_knowledge_base_important_docs",
+    "arguments": "{\\"kb_id\\": \\"02822abe-8ac8-46ff-8fb5-a7ab17b9f765\\", \\"user_query\\": \\"TM120 TransitMaster 120 室外配置选项 outdoor configuration options weather protection\\", \\"_user_msg\\": \\"查找TM120室外配置选项的重要文档\\", \\"products\\": [\\"KONE TransitMaster 120 Escalator\\"]}"
+  },
+  {
+    "name": "search_knowledge_base_with_product_filter",
+    "arguments": "{\\"kb_id\\": \\"02822abe-8ac8-46ff-8fb5-a7ab17b9f765\\", \\"user_query\\": \\"TransitMaster 120 室外选项 outdoor options weather protection environmental adaptations\\", \\"_user_msg\\": \\"查找TM120产品相关的室外配置信息\\", \\"products\\": [\\"KONE TransitMaster 120 Escalator\\"]}"
+  }
+]
+}'''
+
+    result = batch_tool(
+        tool_library=library,
+        hardset_parameters={},
+        invocations=malformed_payload
+    )
+
+    assert "Error:" not in result
+    
+    # Verify both tools were called exactly once
+    assert len(call_tracker["important_docs_calls"]) == 1
+    assert len(call_tracker["filter_calls"]) == 1
+    
+    # Verify the exact arguments were parsed correctly from the malformed JSON
+    first_call = call_tracker["important_docs_calls"][0]
+    assert first_call["kb_id"] == "02822abe-8ac8-46ff-8fb5-a7ab17b9f765"
+    assert first_call["user_query"] == "TM120 TransitMaster 120 室外配置选项 outdoor configuration options weather protection"
+    assert first_call["_user_msg"] == "查找TM120室外配置选项的重要文档"
+    assert first_call["products"] == ["KONE TransitMaster 120 Escalator"]
+    
+    second_call = call_tracker["filter_calls"][0]
+    assert second_call["kb_id"] == "02822abe-8ac8-46ff-8fb5-a7ab17b9f765"
+    assert second_call["user_query"] == "TransitMaster 120 室外选项 outdoor options weather protection environmental adaptations"
+    assert second_call["_user_msg"] == "查找TM120产品相关的室外配置信息"
+    assert second_call["products"] == ["KONE TransitMaster 120 Escalator"]
+    
+    # Verify the results contain the mock return values
+    assert "Found docs result" in result
+    assert "Filtered search result" in result
+
+
+
+
 def test_batch_tool_with_multiple_generators_and_strings():
     """
     Tests the batch_tool with a mix of tools:

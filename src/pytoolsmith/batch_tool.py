@@ -32,6 +32,24 @@ def batch_tool(tool_library: "ToolLibrary",
         Each tool's output is clearly demarcated.
         Generator outputs are streamed with part indicators.
     """
+    import json
+    
+    # Handle case where invocations is passed as a JSON string instead of a list
+    if isinstance(invocations, str):
+        try:
+            invocations = json.loads(invocations)
+        except json.JSONDecodeError as e:
+            # If standard JSON parsing fails, try dirtyjson for malformed JSON
+            try:
+                import dirtyjson
+                invocations = dirtyjson.loads(invocations)
+            except Exception as dirty_e:
+                return f"Error: Could not parse invocations JSON string: {e}. Dirtyjson also failed: {dirty_e}"
+    
+    # Validate that invocations is now a list
+    if not isinstance(invocations, list):
+        return f"Error: invocations must be a list or JSON string representing a list, got {type(invocations)}"
+    
     batch_runner = get_batch_runner()
     funcs_to_call = []
 
